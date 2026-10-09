@@ -881,6 +881,55 @@ describe('latest retry receipts', () => {
   })
 })
 
+describe('worker retry IPC', () => {
+  beforeEach(() => {
+    jest.resetAllMocks()
+    jest.mocked(getAgentName).mockResolvedValue('codex')
+  })
+  it('remains blocked when the parent cannot retain an accepted retry', async () => {
+    const originalWorker = process.env.NEXT_PRIVATE_WORKER
+    const originalSend = process.send
+    const send = jest.fn(
+      (_message: unknown, callback: (error: Error | null) => void) =>
+        callback(new Error('IPC failed'))
+    )
+    const reminder = Promise.resolve({
+      kind: 'security' as const,
+      policy: 'security' as const,
+      installedVersion: '13.0.0',
+      targetVersion: '17.2.1',
+      reference: null,
+    })
+    try {
+      process.env.NEXT_PRIVATE_WORKER = '1'
+      process.send = send as unknown as typeof process.send
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await expect(
+          nudgeUpgrade(
+            directory,
+            config('security'),
+            'dev',
+            null,
+            reminder,
+            null
+          )
+        ).rejects.toMatchObject({ name: 'SecurityFatalError', exitCode: 1 })
+      }
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith(
+        'Could not prepare an upgrade retry. This command will remain blocked.'
+      )
+    } finally {
+      process.send = originalSend
+      if (originalWorker === undefined) {
+        delete process.env.NEXT_PRIVATE_WORKER
+      } else {
+        process.env.NEXT_PRIVATE_WORKER = originalWorker
+      }
+    }
+  })
+})
+
 describe('terminal upgrade nudge', () => {
   const stdinTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
   const stdoutTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
