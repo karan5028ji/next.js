@@ -12,7 +12,6 @@
     "lib",
     "experiments",
     "next-upgrade/runner",
-    "next-upgrade/verifier",
-    "next-upgrade/apps/member-dashboard/behavior.spec.ts"
+    "next-upgrade/verifier/verify.ts"
   ]
 }

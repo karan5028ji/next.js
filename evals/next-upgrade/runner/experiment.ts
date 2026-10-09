@@ -32,7 +32,11 @@ export function upgradeExperiment(
   }
   const scenario = loadCase(name)
   const label = harness === 'codex' ? 'codex' : 'claude'
-  const directory = join(root, 'evidence', label)
+  const directory = join(
+    process.env.NEXT_UPGRADE_EVAL_RESULTS ?? root,
+    'evidence',
+    label
+  )
   let artifact: Artifact | null = null
   mkdirSync(directory, { recursive: true })
   return {
@@ -68,32 +72,22 @@ export function upgradeExperiment(
           throw error
         }
       },
-      beforeValidation: async (sandbox: Sandbox) => {
+      afterValidation: async (sandbox: SandboxManager) => {
+        // agent-eval installs the validation runner. Record the actual version
+        // after validation instead of installing another copy in a suite hook.
         if (scenario.kind === 'nudge') {
-          const install = await sandbox.runCommand('npm', [
-            'install',
-            '--no-save',
-            '--no-package-lock',
-            '--no-audit',
-            '--no-fund',
-            'vitest@3.1.3',
-          ])
-          if (install.exitCode !== 0) {
-            throw new Error(
-              `Nudge grader tooling install failed: ${install.stderr}`
-            )
-          }
+          const toolchain = JSON.parse(
+            await sandbox.readFile('node_modules/vitest/package.json')
+          )
           writeFileSync(
             join(directory, 'grader-toolchain.json'),
             JSON.stringify(
-              { vitest: '3.1.3', judge: 'claude-haiku-4-5' },
+              { vitest: toolchain.version, judge: 'claude-haiku-4-5' },
               null,
               2
             )
           )
         }
-      },
-      afterValidation: async (sandbox: SandboxManager) => {
         if (
           scenario.kind === 'nudge' &&
           (await sandbox.fileExists(`${toolsDirectory}/nudge-verdict.json`))
@@ -103,27 +97,6 @@ export function upgradeExperiment(
             scrub(
               await sandbox.readFile(`${toolsDirectory}/nudge-verdict.json`)
             )
-          )
-          if (
-            await sandbox.fileExists(
-              `${toolsDirectory}/judge-qualification.json`
-            )
-          ) {
-            writeFileSync(
-              join(directory, 'judge-qualification.json'),
-              await sandbox.readFile(
-                `${toolsDirectory}/judge-qualification.json`
-              )
-            )
-          }
-          // Retain fixed-judge reasoning before the native VM is destroyed.
-          const result = await sandbox.runCommand('sh', [
-            '-c',
-            'find __agent_eval__/judge -maxdepth 1 -type f -name "*.json" -exec cat {} \\;',
-          ])
-          writeFileSync(
-            join(directory, 'judge.txt'),
-            scrub(result.stdout + result.stderr)
           )
         }
       },

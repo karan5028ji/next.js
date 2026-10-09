@@ -88,8 +88,7 @@ evals/experiments/
 evals/results/
 evals/agent-results.json
 
-# Upgrade eval execution artifacts and reproducible app lockfiles
+# Upgrade eval execution artifacts
 evals/next-upgrade/.work/
 evals/next-upgrade/results/
-!evals/next-upgrade/apps/**/package-lock.json
-!evals/next-upgrade/apps/**/next-env.d.ts
+.env*

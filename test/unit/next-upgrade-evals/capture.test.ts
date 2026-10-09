@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join, relative } from 'path'
+import { join } from 'path'
 
 const collector = join(
   __dirname,
@@ -62,11 +62,13 @@ it('exports committed, dirty and untracked worktree delivery before grading', ()
     const artifact = JSON.parse(
       readFileSync(join(tools, 'artifact.json'), 'utf8')
     )
-    // Git and Node can spell the same Windows path with different drive casing.
-    // Compare paths using the host's rules, including separator normalization.
-    const delivered = artifact.trees.find(
-      (tree) => relative(worktree, tree.path) === ''
-    )
+    // Identify delivery by its Git commit: Windows temporary paths can have
+    // different spellings in Git and Node while referring to the same worktree.
+    const deliveryHead = git('-C', worktree, 'rev-parse', 'HEAD')
+      .toString()
+      .trim()
+    const baselineHead = git('rev-parse', 'HEAD').toString().trim()
+    const delivered = artifact.trees.find((tree) => tree.head === deliveryHead)
     expect(Buffer.from(delivered.files['page.txt'], 'base64').toString()).toBe(
       'dirty upgrade'
     )
@@ -75,7 +77,7 @@ it('exports committed, dirty and untracked worktree delivery before grading', ()
     )
     expect(Object.keys(delivered.files).sort()).toEqual(['new.txt', 'page.txt'])
     expect(delivered.head).not.toBe(
-      artifact.trees.find((tree) => relative(repository, tree.path) === '').head
+      artifact.trees.find((tree) => tree.head === baselineHead).head
     )
   } finally {
     rmSync(temporary, { recursive: true, force: true })

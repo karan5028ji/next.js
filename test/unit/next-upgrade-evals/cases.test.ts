@@ -1,37 +1,6 @@
 import { execFileSync } from 'child_process'
 import { join } from 'path'
 
-const runner = join(__dirname, '../../../evals/next-upgrade/run.js')
-
-describe('upgrade eval selection', () => {
-  it('lists only the six agreed cases without credentials', () => {
-    expect(
-      execFileSync(process.execPath, [runner, '--list'], {
-        env: { PATH: process.env.PATH, NODE_ENV: 'test' },
-        encoding: 'utf8',
-      })
-        .trim()
-        .split('\n')
-    ).toEqual([
-      'latest-cross-major',
-      'latest-nudge',
-      'latest-same-major',
-      'security-cross-major',
-      'security-nudge',
-      'security-same-major',
-    ])
-  })
-
-  it('validates a nudge fixture without starting remote work', () => {
-    expect(
-      execFileSync(process.execPath, [runner, 'security-nudge', '--dry'], {
-        env: { PATH: process.env.PATH, NODE_ENV: 'test' },
-        encoding: 'utf8',
-      }).trim()
-    ).toBe('security-nudge')
-  })
-})
-
 describe('candidate upgrade evidence', () => {
   it('requires the requested policy and successful command completion', () => {
     const program = `

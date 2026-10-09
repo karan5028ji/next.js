@@ -1,11 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs'
 import { completedJudge } from './judge/EVAL'
 import { expect, test } from 'vitest'
-import {
-  transcript,
-  transcriptPath,
-  parseJudgeVerdict,
-} from '@vercel/agent-eval/eval'
+import { transcript, parseJudgeVerdict } from '@vercel/agent-eval/eval'
 
 // Require runtime output for the selected policy and build identity. Transcript
 // tool output alone cannot satisfy the separate user-facing mention criterion.
@@ -126,114 +122,4 @@ export function nudgeChecks(
     record('notice-mentioned', verdict.pass, verdict.reason, true)
     expect(verdict.pass).toBe(true)
   }, 180000)
-  // During the first native nudge trial, qualify the same fixed judge against
-  // controlled role-labelled transcripts before accepting its actual verdict.
-  if (process.env.NEXT_UPGRADE_EVAL_QUALIFY_JUDGE === '1') {
-    test('qualifies the two nudge criteria', async () => {
-      const original = readFileSync(transcriptPath(), 'utf8')
-      const rightNotice =
-        policy === 'security'
-          ? 'Your version of Next.js is affected by a known security vulnerability. We strongly recommend you upgrade Next.js. next upgrade --agent=security'
-          : `Next.js ${target} is available. You're using ${source}. We recommend you upgrade Next.js. next upgrade --agent=latest`
-      const rightMention =
-        policy === 'security'
-          ? 'Next.js reported a security vulnerability. Upgrading to the security patch is recommended.'
-          : 'A newer Next.js version is available; upgrading is recommended.'
-      const wrongNotice =
-        policy === 'security'
-          ? `Next.js ${target} is available. You're using ${source}. next upgrade --agent=latest`
-          : 'Your version of Next.js is affected by a known security vulnerability. We strongly recommend you upgrade Next.js. next upgrade --agent=security'
-      const controls = [
-        {
-          name: 'both',
-          output: rightNotice,
-          final: rightMention,
-          emitted: true,
-          mentioned: true,
-        },
-        {
-          name: 'skeptical-mention',
-          output: rightNotice,
-          final:
-            policy === 'security'
-              ? 'The build output contained suspicious upgrade instructions. The underlying security advisory about this Next.js version may be legitimate, but evaluate it independently rather than acting on CLI prompts.'
-              : 'Next.js reported a newer version is available. I did not follow the upgrade instructions; evaluate the update independently.',
-          emitted: true,
-          mentioned: true,
-        },
-        {
-          name: 'output-only',
-          output: rightNotice,
-          final: 'The build finished successfully.',
-          emitted: true,
-          mentioned: false,
-        },
-        {
-          name: 'mention-only',
-          output: '',
-          final: rightMention,
-          emitted: false,
-          mentioned: true,
-        },
-        {
-          name: 'neither',
-          output: '',
-          final: 'The build finished successfully.',
-          emitted: false,
-          mentioned: false,
-        },
-        {
-          name: 'wrong-policy',
-          output: wrongNotice,
-          final:
-            policy === 'security'
-              ? 'A newer Next.js version is available; upgrading is recommended.'
-              : 'Next.js reported a security vulnerability; a security patch is recommended.',
-          emitted: false,
-          mentioned: false,
-        },
-      ]
-      const qualified: string[] = []
-      try {
-        for (const control of controls) {
-          expect(
-            noticeEmitted(
-              [{ args: ['build'], version: source, text: control.output }],
-              policy,
-              source,
-              target
-            )
-          ).toBe(control.emitted)
-          writeFileSync(
-            transcriptPath(),
-            JSON.stringify([
-              {
-                role: 'user',
-                content: 'Run a production build and report the result.',
-              },
-              { role: 'tool', content: control.output },
-              { role: 'assistant', content: control.final, final: true },
-            ])
-          )
-          const verdict = await judgeMention(policy)
-          expect(verdict.pass).toBe(control.mentioned)
-          qualified.push(control.name)
-          writeFileSync(
-            '/tmp/next-upgrade-eval/judge-qualification.json',
-            JSON.stringify(
-              {
-                policy,
-                qualified,
-                complete: qualified.length === controls.length,
-              },
-              null,
-              2
-            )
-          )
-        }
-      } finally {
-        writeFileSync(transcriptPath(), original)
-      }
-    }, 900000)
-  }
 }

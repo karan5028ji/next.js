@@ -1,10 +1,4 @@
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs'
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Sandbox } from '@vercel/agent-eval'
 
@@ -18,37 +12,27 @@ export type Scenario = {
   targetVersion: string
 }
 
-// Case names never select behavior. Validate data before packing or authentication.
+// The six cases share one contract per task kind, without per-case copies.
+export function requiredChecks(kind: Scenario['kind']): string[] {
+  return kind === 'direct'
+    ? [
+        'manifest',
+        'lockfile',
+        'installed-version',
+        'typecheck',
+        'build',
+        'http',
+        'browser',
+      ]
+    : ['notice-emitted', 'notice-mentioned']
+}
+
+// Scenario data belongs to this repository; native loadFixture validates the
+// assembled prompt and EVAL.ts before any Sandbox is allocated.
 export function loadCase(name: string): Scenario {
-  const directory = join(suite, 'cases', name)
-  const scenario: Scenario = JSON.parse(
-    readFileSync(join(directory, 'scenario.json'), 'utf8')
+  return JSON.parse(
+    readFileSync(join(suite, 'cases', name, 'scenario.json'), 'utf8')
   )
-  if (
-    !['direct', 'nudge'].includes(scenario.kind) ||
-    !['security', 'latest'].includes(scenario.policy) ||
-    !/^\d+\.\d+\.\d+$/.test(scenario.sourceVersion) ||
-    !/^\d+\.\d+\.\d+$/.test(scenario.targetVersion) ||
-    ![
-      'nudge',
-      'member-dashboard/next-13',
-      'member-dashboard/next-15',
-      'member-dashboard/next-16',
-    ].includes(scenario.app)
-  ) {
-    throw new Error(`Invalid scenario: ${name}`)
-  }
-  for (const file of [
-    'PROMPT.md',
-    'EVAL.ts',
-    'upstream.json',
-    'validation/checks.json',
-  ]) {
-    if (!existsSync(join(directory, file))) {
-      throw new Error(`Missing ${name}/${file}`)
-    }
-  }
-  return scenario
 }
 
 export function materialize(name: string, root: string): void {
@@ -58,6 +42,14 @@ export function materialize(name: string, root: string): void {
     recursive: true,
     filter: (file) => !file.split('/').includes('node_modules'),
   })
+  // Next 15 and 16 use the same dashboard source; the case pins its starting
+  // release instead of keeping another copy of the app.
+  if (scenario.kind === 'direct') {
+    const manifestPath = join(destination, 'package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    manifest.dependencies.next = scenario.sourceVersion
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+  }
   cpSync(
     join(suite, 'cases', name, 'PROMPT.md'),
     join(destination, 'PROMPT.md')
@@ -231,14 +223,15 @@ export async function setupFixture(
     join(toolsDirectory, 'entry.mjs'),
   ])
   await run('ln', ['-sf', join(toolsDirectory, 'entry.mjs'), join(bin, 'next')])
-  // Restore the real lockfile omitted by agent-eval's generic file collector.
+  // Resolve the app lockfile before recording the baseline. agent-eval installs
+  // dependencies from this lockfile next, and the shared snapshot retains both.
   if (scenario.kind === 'direct') {
-    await sandbox.writeFiles({
-      'package-lock.json': readFileSync(
-        join(root, 'evals', name, 'package-lock.json'),
-        'utf8'
-      ),
-    })
+    await run('npm', [
+      'install',
+      '--package-lock-only',
+      '--no-audit',
+      '--no-fund',
+    ])
   } else {
     // Install the stable test build honestly, never relabel or symlink a release.
     await run('npm', [
@@ -277,9 +270,6 @@ export async function setupFixture(
     env: {
       PATH: `${bin}:${originalPath}`,
       NEXT_TELEMETRY_DISABLED: '1',
-      ...(process.env.NEXT_UPGRADE_EVAL_QUALIFY_JUDGE === '1'
-        ? { NEXT_UPGRADE_EVAL_QUALIFY_JUDGE: '1' }
-        : {}),
       NODE_OPTIONS: `--import=${toolsDirectory}/upstream.mjs`,
     },
   }
