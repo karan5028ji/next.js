@@ -344,7 +344,7 @@ pub(crate) mod tests {
     /// returns the complete trace file content.
     pub(crate) fn capture(options: RawTraceLayerOptions, f: impl FnOnce()) -> Vec<u8> {
         let buffer = SharedBuffer::default();
-        let (trace_writer, guard) = TraceWriter::new(buffer.clone());
+        let (trace_writer, guard) = TraceWriter::from_writer(buffer.clone());
         let subscriber =
             Registry::default().with(RawTraceLayer::with_options(trace_writer, options));
         tracing::subscriber::with_default(subscriber, f);
