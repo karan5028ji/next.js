@@ -62,7 +62,7 @@ inputs; it is not relabelled as a published stable binary.
 An explicitly prepared tarball may be reused through
 `NEXT_UPGRADE_EVAL_STABLE_TARBALL`; its directory must also contain
 `stable-provenance.json` recording source revision, original and declared version,
-compiled CLI version, package checksum (`nextSha256`), and build method. The runner rejects mismatched revision, original identity, checksum, or stable compilation identity before allocating remote resources.
+compiled CLI version, package checksum (`nextSha256`), and build method. The runner checks revision, original identity, checksum, and stable compilation identity before allocating remote resources and stops on any mismatch.
 
 ## Ownership
 
@@ -116,4 +116,4 @@ pnpm exec tsx evals/next-upgrade/verifier/verify.ts <absolute-native-run-1-direc
 This appends a `reverification-<timestamp>/` record without rerunning the coding agent or
 changing the original verdict. Direct apps run in a clean verifier; nudge transcripts
 use the same fixed native judge. The recorded original scenario stays fixed while
-corrected grader sources and hashes are retained with the new verdict. Original failed/invalid attempts remain retained.
+corrected grader sources and hashes are retained with the new verdict. Original failed/invalid attempts are also retained.

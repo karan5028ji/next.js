@@ -19,7 +19,7 @@ export default defineConfig([
       // tsconfig, not repo code — EVAL.ts files may import modules that only
       // resolve inside the sandbox (e.g. @vercel/agent-eval/eval).
       'evals/evals/**/*',
-      'evals/next-upgrade/evals/**/*',
+      'evals/next-upgrade/cases/**/*',
       'evals/next-upgrade/results/**/*',
       'evals/next-upgrade/shared/**/*',
       'examples/**/*',

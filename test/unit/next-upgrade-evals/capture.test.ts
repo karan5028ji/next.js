@@ -9,9 +9,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
-
-const normalized = (path: string) => path.replace(/\\/g, '/')
+import { join, relative } from 'path'
 
 const collector = join(
   __dirname,
@@ -64,8 +62,10 @@ it('exports committed, dirty and untracked worktree delivery before grading', ()
     const artifact = JSON.parse(
       readFileSync(join(tools, 'artifact.json'), 'utf8')
     )
+    // Git and Node can spell the same Windows path with different drive casing.
+    // Compare paths using the host's rules, including separator normalization.
     const delivered = artifact.trees.find(
-      (tree) => normalized(tree.path) === normalized(worktree)
+      (tree) => relative(worktree, tree.path) === ''
     )
     expect(Buffer.from(delivered.files['page.txt'], 'base64').toString()).toBe(
       'dirty upgrade'
@@ -75,9 +75,7 @@ it('exports committed, dirty and untracked worktree delivery before grading', ()
     )
     expect(Object.keys(delivered.files).sort()).toEqual(['new.txt', 'page.txt'])
     expect(delivered.head).not.toBe(
-      artifact.trees.find(
-        (tree) => normalized(tree.path) === normalized(repository)
-      ).head
+      artifact.trees.find((tree) => relative(repository, tree.path) === '').head
     )
   } finally {
     rmSync(temporary, { recursive: true, force: true })
