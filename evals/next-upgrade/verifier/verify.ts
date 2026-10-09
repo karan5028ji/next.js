@@ -46,19 +46,40 @@ export async function prepareVerifier() {
 
 // The verifier receives only exported source and trusted tests. No Gateway key,
 // agent state, cached build, node_modules, or mutable app test code is transferred.
+let verifierCancelled = false
+
 export async function verifyTree(
   tree: DeliveredTree,
   name: string,
   directory: string
 ): Promise<Verdict> {
+  if (verifierCancelled) {
+    throw new Error('App verification cancelled')
+  }
   const trusted = process.env.NEXT_UPGRADE_EVAL_TRUSTED_ROOT ?? suite
-  const sandbox = await SandboxManager.create({
-    backend: 'vercel',
-    runtime: 'node24',
-    timeout: 1200000,
-    snapshotId: process.env.NEXT_UPGRADE_EVAL_VERIFIER_SNAPSHOT_ID,
-  })
+  let sandbox: SandboxManager | null = null
+  const cleanup: { pending: Promise<PromiseSettledResult<void>[]> | null } = {
+    pending: null,
+  }
+  const cancel = () => {
+    verifierCancelled = true
+    if (sandbox && !cleanup.pending) {
+      // Observe cleanup immediately, then report any rejection in finally.
+      cleanup.pending = Promise.allSettled([sandbox.stop()])
+    }
+  }
+  process.on('SIGINT', cancel)
+  process.on('SIGTERM', cancel)
   try {
+    sandbox = await SandboxManager.create({
+      backend: 'vercel',
+      runtime: 'node24',
+      timeout: 1200000,
+      snapshotId: process.env.NEXT_UPGRADE_EVAL_VERIFIER_SNAPSHOT_ID,
+    })
+    if (verifierCancelled) {
+      throw new Error('App verification cancelled during VM creation')
+    }
     const files = Object.entries(tree.files).map(([path, data]) => {
       if (
         path.startsWith('/') ||
@@ -150,7 +171,20 @@ export async function verifyTree(
           : 'Delivered app failed required checks',
     }
   } finally {
-    await sandbox.stop()
+    try {
+      if (!cleanup.pending && sandbox) {
+        cleanup.pending = Promise.allSettled([sandbox.stop()])
+      }
+      if (cleanup.pending) {
+        const [result] = await cleanup.pending
+        if (result.status === 'rejected') {
+          throw result.reason
+        }
+      }
+    } finally {
+      process.off('SIGINT', cancel)
+      process.off('SIGTERM', cancel)
+    }
   }
 }
 
