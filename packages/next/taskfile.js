@@ -2265,10 +2265,22 @@ export async function ncc_safe_stable_stringify(task, opts) {
 }
 
 export async function precompile(task, opts) {
+  await task.serial(['ncc_next_upgrade'], opts)
   await task.parallel(
     ['browser_polyfills', 'copy_ncced', 'copy_styled_jsx_assets', 'copy_docs'],
     opts
   )
+}
+
+// Build the upgrade library before refreshing Next's integration bundle.
+export async function ncc_next_upgrade() {
+  await execa('pnpm', ['--filter=@next/upgrade', 'build'], { cwd: __dirname })
+  // NCC tasks run in parallel; copy without reusing Taskr's stream.
+  const target = join(__dirname, 'src/compiled/next-upgrade')
+  await fs.rm(target, { recursive: true, force: true })
+  await fs.cp(join(__dirname, '../next-upgrade/dist/next'), target, {
+    recursive: true,
+  })
 }
 
 export async function copy_ncced(task) {
@@ -2282,6 +2294,7 @@ export async function ncc(task, opts) {
     .clear('src/compiled')
     .parallel(
       [
+        'ncc_next_upgrade',
         'ncc_safe_stable_stringify',
         'ncc_node_html_parser',
         'ncc_napirs_triples',
